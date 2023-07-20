@@ -96,62 +96,64 @@ func buildJwtAuthn(irListener *ir.HTTPListener) (*jwtauthnv3.JwtAuthentication, 
 	jwtProviders := make(map[string]*jwtauthnv3.JwtProvider)
 	reqMap := make(map[string]*jwtauthnv3.JwtRequirement)
 
-	for _, route := range irListener.Routes {
-		if route != nil && routeContainsJwtAuthn(route) {
-			var reqs []*jwtauthnv3.JwtRequirement
-			for i := range route.RequestAuthentication.JWT.Providers {
-				irProvider := route.RequestAuthentication.JWT.Providers[i]
-				// Create the cluster for the remote jwks, if it doesn't exist.
-				jwksCluster, err := newJwksCluster(&irProvider)
-				if err != nil {
-					return nil, err
-				}
+	for _, vh := range irListener.VirtualHosts {
+		for _, route := range vh.Routes {
+			if route != nil && routeContainsJwtAuthn(route) {
+				var reqs []*jwtauthnv3.JwtRequirement
+				for i := range route.RequestAuthentication.JWT.Providers {
+					irProvider := route.RequestAuthentication.JWT.Providers[i]
+					// Create the cluster for the remote jwks, if it doesn't exist.
+					jwksCluster, err := newJwksCluster(&irProvider)
+					if err != nil {
+						return nil, err
+					}
 
-				remote := &jwtauthnv3.JwtProvider_RemoteJwks{
-					RemoteJwks: &jwtauthnv3.RemoteJwks{
-						HttpUri: &corev3.HttpUri{
-							Uri: irProvider.RemoteJWKS.URI,
-							HttpUpstreamType: &corev3.HttpUri_Cluster{
-								Cluster: jwksCluster.name,
+					remote := &jwtauthnv3.JwtProvider_RemoteJwks{
+						RemoteJwks: &jwtauthnv3.RemoteJwks{
+							HttpUri: &corev3.HttpUri{
+								Uri: irProvider.RemoteJWKS.URI,
+								HttpUpstreamType: &corev3.HttpUri_Cluster{
+									Cluster: jwksCluster.name,
+								},
+								Timeout: &durationpb.Duration{Seconds: 5},
 							},
-							Timeout: &durationpb.Duration{Seconds: 5},
+							CacheDuration: &durationpb.Duration{Seconds: 5 * 60},
 						},
-						CacheDuration: &durationpb.Duration{Seconds: 5 * 60},
-					},
-				}
+					}
 
-				claimToHeaders := []*jwtauthnv3.JwtClaimToHeader{}
-				for _, claimToHeader := range irProvider.ClaimToHeaders {
-					claimToHeader := &jwtauthnv3.JwtClaimToHeader{HeaderName: claimToHeader.Header, ClaimName: claimToHeader.Claim}
-					claimToHeaders = append(claimToHeaders, claimToHeader)
-				}
-				jwtProvider := &jwtauthnv3.JwtProvider{
-					Issuer:              irProvider.Issuer,
-					Audiences:           irProvider.Audiences,
-					JwksSourceSpecifier: remote,
-					PayloadInMetadata:   irProvider.Issuer,
-					ClaimToHeaders:      claimToHeaders,
-				}
+					claimToHeaders := []*jwtauthnv3.JwtClaimToHeader{}
+					for _, claimToHeader := range irProvider.ClaimToHeaders {
+						claimToHeader := &jwtauthnv3.JwtClaimToHeader{HeaderName: claimToHeader.Header, ClaimName: claimToHeader.Claim}
+						claimToHeaders = append(claimToHeaders, claimToHeader)
+					}
+					jwtProvider := &jwtauthnv3.JwtProvider{
+						Issuer:              irProvider.Issuer,
+						Audiences:           irProvider.Audiences,
+						JwksSourceSpecifier: remote,
+						PayloadInMetadata:   irProvider.Issuer,
+						ClaimToHeaders:      claimToHeaders,
+					}
 
-				providerKey := fmt.Sprintf("%s-%s", route.Name, irProvider.Name)
-				jwtProviders[providerKey] = jwtProvider
-				reqs = append(reqs, &jwtauthnv3.JwtRequirement{
-					RequiresType: &jwtauthnv3.JwtRequirement_ProviderName{
-						ProviderName: providerKey,
-					},
-				})
-			}
-			if len(reqs) == 1 {
-				reqMap[route.Name] = reqs[0]
-			} else {
-				orListReqs := &jwtauthnv3.JwtRequirement{
-					RequiresType: &jwtauthnv3.JwtRequirement_RequiresAny{
-						RequiresAny: &jwtauthnv3.JwtRequirementOrList{
-							Requirements: reqs,
+					providerKey := fmt.Sprintf("%s-%s", route.Name, irProvider.Name)
+					jwtProviders[providerKey] = jwtProvider
+					reqs = append(reqs, &jwtauthnv3.JwtRequirement{
+						RequiresType: &jwtauthnv3.JwtRequirement_ProviderName{
+							ProviderName: providerKey,
 						},
-					},
+					})
 				}
-				reqMap[route.Name] = orListReqs
+				if len(reqs) == 1 {
+					reqMap[route.Name] = reqs[0]
+				} else {
+					orListReqs := &jwtauthnv3.JwtRequirement{
+						RequiresType: &jwtauthnv3.JwtRequirement_RequiresAny{
+							RequiresAny: &jwtauthnv3.JwtRequirementOrList{
+								Requirements: reqs,
+							},
+						},
+					}
+					reqMap[route.Name] = orListReqs
+				}
 			}
 		}
 	}
@@ -311,40 +313,42 @@ type jwksCluster struct {
 	isStatic bool
 }
 
-// createJwksClusters creates JWKS clusters from the provided routes, if needed.
-func createJwksClusters(tCtx *types.ResourceVersionTable, routes []*ir.HTTPRoute) error {
+// createJwksClusters creates JWKS clusters from the provided virtual hosts, if needed.
+func createJwksClusters(tCtx *types.ResourceVersionTable, virtualHosts []*ir.VirtualHost) error {
 	if tCtx == nil ||
 		tCtx.XdsResources == nil ||
 		tCtx.XdsResources[resource.ClusterType] == nil ||
-		len(routes) == 0 {
+		len(virtualHosts) == 0 {
 		return nil
 	}
 
-	for _, route := range routes {
-		if routeContainsJwtAuthn(route) {
-			for i := range route.RequestAuthentication.JWT.Providers {
-				provider := route.RequestAuthentication.JWT.Providers[i]
-				jwks, err := newJwksCluster(&provider)
-				ep := DefaultEndpointType
-				if jwks.isStatic {
-					ep = Static
-				}
-				if err != nil {
-					return err
-				}
-				if existingCluster := findXdsCluster(tCtx, jwks.name); existingCluster == nil {
-					routeDestinations := []*ir.RouteDestination{ir.NewRouteDest(jwks.hostname, jwks.port)}
-					tSocket, err := buildXdsUpstreamTLSSocket()
+	for _, vh := range virtualHosts {
+		for _, route := range vh.Routes {
+			if routeContainsJwtAuthn(route) {
+				for i := range route.RequestAuthentication.JWT.Providers {
+					provider := route.RequestAuthentication.JWT.Providers[i]
+					jwks, err := newJwksCluster(&provider)
+					ep := DefaultEndpointType
+					if jwks.isStatic {
+						ep = Static
+					}
 					if err != nil {
 						return err
 					}
-					addXdsCluster(tCtx, addXdsClusterArgs{
-						name:         jwks.name,
-						destinations: routeDestinations,
-						tSocket:      tSocket,
-						protocol:     DefaultProtocol,
-						endpoint:     ep,
-					})
+					if existingCluster := findXdsCluster(tCtx, jwks.name); existingCluster == nil {
+						routeDestinations := []*ir.RouteDestination{ir.NewRouteDest(jwks.hostname, jwks.port)}
+						tSocket, err := buildXdsUpstreamTLSSocket()
+						if err != nil {
+							return err
+						}
+						addXdsCluster(tCtx, addXdsClusterArgs{
+							name:         jwks.name,
+							destinations: routeDestinations,
+							tSocket:      tSocket,
+							protocol:     DefaultProtocol,
+							endpoint:     ep,
+						})
+					}
 				}
 			}
 		}
@@ -405,9 +409,11 @@ func listenerContainsJwtAuthn(irListener *ir.HTTPListener) bool {
 		return false
 	}
 
-	for _, route := range irListener.Routes {
-		if routeContainsJwtAuthn(route) {
-			return true
+	for _, vh := range irListener.VirtualHosts {
+		for _, route := range vh.Routes {
+			if routeContainsJwtAuthn(route) {
+				return true
+			}
 		}
 	}
 

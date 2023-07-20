@@ -5,11 +5,13 @@ http:
   port: 10080
   hostnames:
   - "*"
-  routes:
-  - name: "response-header-route"
-    destinations:
-    - host: "1.2.3.4"
-      port: 50000
-    removeResponseHeaders:
-    - "some-header5"
-    - "some-header6"
+  virtualHosts:
+  - domain: "*"
+    routes:
+    - name: "response-header-route"
+      destinations:
+      - host: "1.2.3.4"
+        port: 50000
+      removeResponseHeaders:
+      - "some-header5"
+      - "some-header6"

@@ -4,11 +4,13 @@ http:
   port: 10080
   hostnames:
   - "*"
-  routes:
-  - name: "first-route"
-    destinations:
-    - host: "1.2.3.4"
-      port: 50000
-    backendWeights:
-      invalid: 1
-      valid: 1
+  virtualHosts:
+  - domain: "*"
+    routes:
+    - name: "first-route"
+      destinations:
+      - host: "1.2.3.4"
+        port: 50000
+      backendWeights:
+        invalid: 1
+        valid: 1

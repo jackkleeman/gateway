@@ -126,65 +126,67 @@ func (t *Translator) processHTTPListenerXdsTranslation(tCtx *types.ResourceVersi
 			}
 		}
 
-		// Allocate virtual host for this httpListener.
-		// 1:1 between IR HTTPListener and xDS VirtualHost
-		vHost := &routev3.VirtualHost{
-			Name:    httpListener.Name,
-			Domains: httpListener.Hostnames,
-		}
 		protocol := DefaultProtocol
 		if httpListener.IsHTTP2 {
 			protocol = HTTP2
 		}
 
 		// Check if an extension is loaded that wants to modify xDS Routes after they have been generated
-		for _, httpRoute := range httpListener.Routes {
-			// 1:1 between IR HTTPRoute and xDS config.route.v3.Route
-			xdsRoute := buildXdsRoute(httpRoute, xdsListener)
+		for _, vh := range httpListener.VirtualHosts {
+			// Allocate virtual host
+			vHost := &routev3.VirtualHost{
+				Name:    httpListener.Name,
+				Domains: httpListener.Hostnames,
+			}
 
-			// Check if an extension want to modify the route we just generated
+			for _, httpRoute := range vh.Routes {
+				// 1:1 between IR HTTPRoute and xDS config.route.v3.Route
+				xdsRoute := buildXdsRoute(httpRoute, xdsListener)
+
+				// Check if an extension want to modify the route we just generated
+				// If no extension exists (or it doesn't subscribe to this hook) then this is a quick no-op.
+				if err := processExtensionPostRouteHook(xdsRoute, vHost, httpRoute, t.ExtensionManager); err != nil {
+					return err
+				}
+
+				vHost.Routes = append(vHost.Routes, xdsRoute)
+
+				// Skip trying to build an IR cluster if the httpRoute only has invalid backends
+				if len(httpRoute.Destinations) == 0 && httpRoute.BackendWeights.Invalid > 0 {
+					continue
+				}
+				addXdsCluster(tCtx, addXdsClusterArgs{
+					name:         httpRoute.Name,
+					destinations: httpRoute.Destinations,
+					tSocket:      nil,
+					protocol:     protocol,
+					endpoint:     Static,
+				})
+
+				// If the httpRoute has a list of mirrors create clusters for them unless they already have one
+				for i, mirror := range httpRoute.Mirrors {
+					mirrorClusterName := fmt.Sprintf("%s-mirror-%d", httpRoute.Name, i)
+					if cluster := findXdsCluster(tCtx, mirrorClusterName); cluster == nil {
+						addXdsCluster(tCtx, addXdsClusterArgs{
+							name:         mirrorClusterName,
+							destinations: []*ir.RouteDestination{mirror},
+							tSocket:      nil,
+							protocol:     protocol,
+							endpoint:     Static,
+						})
+					}
+
+				}
+			}
+
+			// Check if an extension want to modify the Virtual Host we just generated
 			// If no extension exists (or it doesn't subscribe to this hook) then this is a quick no-op.
-			if err := processExtensionPostRouteHook(xdsRoute, vHost, httpRoute, t.ExtensionManager); err != nil {
+			if err := processExtensionPostVHostHook(vHost, t.ExtensionManager); err != nil {
 				return err
 			}
 
-			vHost.Routes = append(vHost.Routes, xdsRoute)
-
-			// Skip trying to build an IR cluster if the httpRoute only has invalid backends
-			if len(httpRoute.Destinations) == 0 && httpRoute.BackendWeights.Invalid > 0 {
-				continue
-			}
-			addXdsCluster(tCtx, addXdsClusterArgs{
-				name:         httpRoute.Name,
-				destinations: httpRoute.Destinations,
-				tSocket:      nil,
-				protocol:     protocol,
-				endpoint:     Static,
-			})
-
-			// If the httpRoute has a list of mirrors create clusters for them unless they already have one
-			for i, mirror := range httpRoute.Mirrors {
-				mirrorClusterName := fmt.Sprintf("%s-mirror-%d", httpRoute.Name, i)
-				if cluster := findXdsCluster(tCtx, mirrorClusterName); cluster == nil {
-					addXdsCluster(tCtx, addXdsClusterArgs{
-						name:         mirrorClusterName,
-						destinations: []*ir.RouteDestination{mirror},
-						tSocket:      nil,
-						protocol:     protocol,
-						endpoint:     Static,
-					})
-				}
-
-			}
+			xdsRouteCfg.VirtualHosts = append(xdsRouteCfg.VirtualHosts, vHost)
 		}
-
-		// Check if an extension want to modify the Virtual Host we just generated
-		// If no extension exists (or it doesn't subscribe to this hook) then this is a quick no-op.
-		if err := processExtensionPostVHostHook(vHost, t.ExtensionManager); err != nil {
-			return err
-		}
-
-		xdsRouteCfg.VirtualHosts = append(xdsRouteCfg.VirtualHosts, vHost)
 
 		// TODO: Make this into a generic interface for API Gateway features.
 		//       https://github.com/envoyproxy/gateway/issues/882
@@ -194,7 +196,7 @@ func (t *Translator) processHTTPListenerXdsTranslation(tCtx *types.ResourceVersi
 		}
 
 		// Create authn jwks clusters, if needed.
-		if err := createJwksClusters(tCtx, httpListener.Routes); err != nil {
+		if err := createJwksClusters(tCtx, httpListener.VirtualHosts); err != nil {
 			return err
 		}
 		// Check if an extension want to modify the listener that was just configured/created

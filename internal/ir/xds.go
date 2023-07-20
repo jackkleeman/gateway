@@ -138,10 +138,17 @@ type HTTPListener struct {
 	Hostnames []string
 	// Tls certificate info. If omitted, the gateway will expose a plain text HTTP server.
 	TLS []*TLSListenerConfig
-	// Routes associated with HTTP traffic to the service.
-	Routes []*HTTPRoute
+	// Virtual hosts associated with HTTP traffic to the service.
+	VirtualHosts []*VirtualHost
 	// IsHTTP2 is set if the upstream client as well as the downstream server are configured to serve HTTP2 traffic.
 	IsHTTP2 bool
+}
+
+// VirtualHost holds the virtual host configuration.
+// +k8s:deepcopy-gen=true
+type VirtualHost struct {
+	Domain string
+	Routes []*HTTPRoute
 }
 
 // Validate the fields within the HTTPListener structure
@@ -166,9 +173,11 @@ func (h HTTPListener) Validate() error {
 			}
 		}
 	}
-	for _, route := range h.Routes {
-		if err := route.Validate(); err != nil {
-			errs = multierror.Append(errs, err)
+	for _, v := range h.VirtualHosts {
+		for _, route := range v.Routes {
+			if err := route.Validate(); err != nil {
+				errs = multierror.Append(errs, err)
+			}
 		}
 	}
 	return errs

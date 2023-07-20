@@ -7,8 +7,6 @@ package gatewayapi
 
 import (
 	"fmt"
-	"strings"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -486,27 +484,9 @@ func (t *Translator) processHTTPRouteParentRefListener(route RouteContext, route
 		}
 		hasHostnameIntersection = true
 
-		var perHostRoutes []*ir.HTTPRoute
+		virtualHosts := make(map[string]*ir.VirtualHost, len(hosts))
 		for _, host := range hosts {
 			var headerMatches []*ir.StringMatch
-
-			// If the intersecting host is more specific than the Listener's hostname,
-			// add an additional header match to all of the routes for it
-			if host != "*" && (listener.Hostname == nil || string(*listener.Hostname) != host) {
-				// Hostnames that are prefixed with a wildcard label (*.)
-				// are interpreted as a suffix match.
-				if strings.HasPrefix(host, "*.") {
-					headerMatches = append(headerMatches, &ir.StringMatch{
-						Name:   ":authority",
-						Suffix: StringPtr(host[2:]),
-					})
-				} else {
-					headerMatches = append(headerMatches, &ir.StringMatch{
-						Name:  ":authority",
-						Exact: StringPtr(host),
-					})
-				}
-			}
 
 			for _, routeRoute := range routeRoutes {
 				hostRoute := &ir.HTTPRoute{
@@ -531,7 +511,14 @@ func (t *Translator) processHTTPRouteParentRefListener(route RouteContext, route
 				if routeRoute.BackendWeights.Invalid > 0 {
 					hostRoute.BackendWeights = routeRoute.BackendWeights
 				}
-				perHostRoutes = append(perHostRoutes, hostRoute)
+				if virtualHosts[host] != nil {
+					virtualHosts[host].Routes = append(virtualHosts[host].Routes, hostRoute)
+				} else {
+					virtualHosts[host] = &ir.VirtualHost{
+						Domain: host,
+						Routes: []*ir.HTTPRoute{hostRoute},
+					}
+				}
 			}
 		}
 
@@ -541,7 +528,9 @@ func (t *Translator) processHTTPRouteParentRefListener(route RouteContext, route
 			if GetRouteType(route) == KindGRPCRoute {
 				irListener.IsHTTP2 = true
 			}
-			irListener.Routes = append(irListener.Routes, perHostRoutes...)
+			for _, v := range virtualHosts {
+				irListener.VirtualHosts = append(irListener.VirtualHosts, v)
+			}
 		}
 		// Theoretically there should only be one parent ref per
 		// Route that attaches to a given Listener, so fine to just increment here, but we

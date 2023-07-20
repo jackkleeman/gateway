@@ -4,19 +4,21 @@ http:
   port: 10080
   hostnames:
   - "*"
-  routes:
-  - name: "first-route"
-    pathMatch:
-      exact: "foo/bar"
-    requestAuthentication:
-      jwt:
-        providers:
-        - name: example
-          issuer: https://www.example.com
-          audiences:
-          - foo.com
-          remoteJWKS:
-            uri: https://localhost/jwt/public-key/jwks.json
-    destinations:
-    - host: "1.2.3.4"
-      port: 50000
+  virtualHosts:
+  - domain: "*"
+    routes:
+    - name: "first-route"
+      pathMatch:
+        exact: "foo/bar"
+      requestAuthentication:
+        jwt:
+          providers:
+          - name: example
+            issuer: https://www.example.com
+            audiences:
+            - foo.com
+            remoteJWKS:
+              uri: https://localhost/jwt/public-key/jwks.json
+      destinations:
+      - host: "1.2.3.4"
+        port: 50000

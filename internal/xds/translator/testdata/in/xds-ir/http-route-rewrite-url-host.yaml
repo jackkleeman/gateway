@@ -5,17 +5,19 @@ http:
   port: 10080
   hostnames:
   - "*"
-  routes:
-  - name: "rewrite-route"
-    pathMatch:
-      prefix: "/origin"
-    headerMatches:
-    - name: ":authority"
-      exact: gateway.envoyproxy.io
-    destinations:
-    - host: "1.2.3.4"
-      port: 50000
-    urlRewrite:
-      hostname: "3.3.3.3"
-      path:
-        prefixMatchReplace: /rewrite
+  virtualHosts:
+  - domain: "*"
+    routes:
+    - name: "rewrite-route"
+      pathMatch:
+        prefix: "/origin"
+      headerMatches:
+      - name: ":authority"
+        exact: gateway.envoyproxy.io
+      destinations:
+      - host: "1.2.3.4"
+        port: 50000
+      urlRewrite:
+        hostname: "3.3.3.3"
+        path:
+          prefixMatchReplace: /rewrite

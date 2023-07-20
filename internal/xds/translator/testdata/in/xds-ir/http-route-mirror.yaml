@@ -5,11 +5,13 @@ http:
   port: 10080
   hostnames:
   - "*"
-  routes:
-  - name: "mirror-route"
-    destinations:
-    - host: "1.2.3.4"
-      port: 50000
-    mirrors:
-    - host: "2.3.4.5"
-      port: 60000
+  virtualHosts:
+  - domain: "*"
+    routes:
+    - name: "mirror-route"
+      destinations:
+      - host: "1.2.3.4"
+        port: 50000
+      mirrors:
+      - host: "2.3.4.5"
+        port: 60000

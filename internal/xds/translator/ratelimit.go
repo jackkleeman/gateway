@@ -76,9 +76,11 @@ func (t *Translator) isRateLimitPresent(irListener *ir.HTTPListener) bool {
 		return false
 	}
 	// Return true if rate limit config exists.
-	for _, route := range irListener.Routes {
-		if route.RateLimit != nil && route.RateLimit.Global != nil {
-			return true
+	for _, vh := range irListener.VirtualHosts {
+		for _, route := range vh.Routes {
+			if route.RateLimit != nil && route.RateLimit.Global != nil {
+				return true
+			}
 		}
 	}
 	return false
@@ -255,10 +257,12 @@ func GetRateLimitServiceConfigStr(pbCfg *rlsconfv3.RateLimitConfig) (string, err
 func BuildRateLimitServiceConfig(irListener *ir.HTTPListener) *rlsconfv3.RateLimitConfig {
 	pbDescriptors := make([]*rlsconfv3.RateLimitDescriptor, 0, 1)
 
-	for _, route := range irListener.Routes {
-		if route.RateLimit != nil && route.RateLimit.Global != nil {
-			serviceDescriptors := buildRateLimitServiceDescriptors(route.Name, route.RateLimit.Global)
-			pbDescriptors = append(pbDescriptors, serviceDescriptors...)
+	for _, vh := range irListener.VirtualHosts {
+		for _, route := range vh.Routes {
+			if route.RateLimit != nil && route.RateLimit.Global != nil {
+				serviceDescriptors := buildRateLimitServiceDescriptors(route.Name, route.RateLimit.Global)
+				pbDescriptors = append(pbDescriptors, serviceDescriptors...)
+			}
 		}
 	}
 

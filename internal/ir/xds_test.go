@@ -17,11 +17,11 @@ import (
 var (
 	// HTTPListener
 	happyHTTPListener = HTTPListener{
-		Name:      "happy",
-		Address:   "0.0.0.0",
-		Port:      80,
-		Hostnames: []string{"example.com"},
-		Routes:    []*HTTPRoute{&happyHTTPRoute},
+		Name:         "happy",
+		Address:      "0.0.0.0",
+		Port:         80,
+		Hostnames:    []string{"example.com"},
+		VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&happyHTTPRoute}}},
 	}
 	happyHTTPSListener = HTTPListener{
 		Name:      "happy",
@@ -33,35 +33,35 @@ var (
 			ServerCertificate: []byte{1, 2, 3},
 			PrivateKey:        []byte{1, 2, 3},
 		}},
-		Routes: []*HTTPRoute{&happyHTTPRoute},
+		VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&happyHTTPRoute}}},
 	}
 	invalidAddrHTTPListener = HTTPListener{
-		Name:      "invalid-addr",
-		Address:   "1.0.0",
-		Port:      80,
-		Hostnames: []string{"example.com"},
-		Routes:    []*HTTPRoute{&happyHTTPRoute},
+		Name:         "invalid-addr",
+		Address:      "1.0.0",
+		Port:         80,
+		Hostnames:    []string{"example.com"},
+		VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&happyHTTPRoute}}},
 	}
 	invalidRouteMatchHTTPListener = HTTPListener{
-		Name:      "invalid-route-match",
-		Address:   "0.0.0.0",
-		Port:      80,
-		Hostnames: []string{"example.com"},
-		Routes:    []*HTTPRoute{&emptyMatchHTTPRoute},
+		Name:         "invalid-route-match",
+		Address:      "0.0.0.0",
+		Port:         80,
+		Hostnames:    []string{"example.com"},
+		VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&emptyMatchHTTPRoute}}},
 	}
 	invalidBackendHTTPListener = HTTPListener{
-		Name:      "invalid-backend-match",
-		Address:   "0.0.0.0",
-		Port:      80,
-		Hostnames: []string{"example.com"},
-		Routes:    []*HTTPRoute{&invalidBackendHTTPRoute},
+		Name:         "invalid-backend-match",
+		Address:      "0.0.0.0",
+		Port:         80,
+		Hostnames:    []string{"example.com"},
+		VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&invalidBackendHTTPRoute}}},
 	}
 	weightedInvalidBackendsHTTPListener = HTTPListener{
-		Name:      "weighted-invalid-backends-match",
-		Address:   "0.0.0.0",
-		Port:      80,
-		Hostnames: []string{"example.com"},
-		Routes:    []*HTTPRoute{&weightedInvalidBackendsHTTPRoute},
+		Name:         "weighted-invalid-backends-match",
+		Address:      "0.0.0.0",
+		Port:         80,
+		Hostnames:    []string{"example.com"},
+		VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&weightedInvalidBackendsHTTPRoute}}},
 	}
 
 	// TCPListener
@@ -546,10 +546,10 @@ func TestValidateHTTPListener(t *testing.T) {
 		{
 			name: "invalid name",
 			input: HTTPListener{
-				Address:   "0.0.0.0",
-				Port:      80,
-				Hostnames: []string{"example.com"},
-				Routes:    []*HTTPRoute{&happyHTTPRoute},
+				Address:      "0.0.0.0",
+				Port:         80,
+				Hostnames:    []string{"example.com"},
+				VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&happyHTTPRoute}}},
 			},
 			want: []error{ErrListenerNameEmpty},
 		},
@@ -561,9 +561,9 @@ func TestValidateHTTPListener(t *testing.T) {
 		{
 			name: "invalid port and hostnames",
 			input: HTTPListener{
-				Name:    "invalid-port-and-hostnames",
-				Address: "1.0.0",
-				Routes:  []*HTTPRoute{&happyHTTPRoute},
+				Name:         "invalid-port-and-hostnames",
+				Address:      "1.0.0",
+				VirtualHosts: []*VirtualHost{{Domain: "*", Routes: []*HTTPRoute{&happyHTTPRoute}}},
 			},
 			want: []error{ErrListenerPortInvalid, ErrHTTPListenerHostnamesEmpty},
 		},

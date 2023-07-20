@@ -5,18 +5,20 @@ http:
   hostnames:
   - "*"
   isHTTP2: true
-  routes:
-  - name: "first-route"
-    pathMatch:
-      name: "test"
-      exact: "foo/bar"
-    headerMatches:
-    - name: user
-      stringMatch:
-      exact: "jason"
-    queryParamMatches:
-    - name: "debug"
-      exact: "yes"
-    destinations:
-    - host: "1.2.3.4"
-      port: 50000
+  virtualHosts:
+  - domain: "*"
+    routes:
+    - name: "first-route"
+      pathMatch:
+        name: "test"
+        exact: "foo/bar"
+      headerMatches:
+      - name: user
+        stringMatch:
+        exact: "jason"
+      queryParamMatches:
+      - name: "debug"
+        exact: "yes"
+      destinations:
+      - host: "1.2.3.4"
+        port: 50000

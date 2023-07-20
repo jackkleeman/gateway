@@ -25,11 +25,13 @@ http:
     port: 10080
     hostnames:
       - "*"
-    routes:
-      - name: "direct-route"
-        destinations:
-          - host: "1.2.3.4"
-            port: 50000
-        directResponse:
-          body: "Unknown custom filter type: UnsupportedType"
-          statusCode: 500
+    virtualHosts:
+      - domain: "*"
+        routes:
+          - name: "direct-route"
+            destinations:
+              - host: "1.2.3.4"
+                port: 50000
+            directResponse:
+              body: "Unknown custom filter type: UnsupportedType"
+              statusCode: 500
